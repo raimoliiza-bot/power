@@ -131,6 +131,7 @@ const SUPABASE_URL = 'https://pfolivhzgkeqijagzejq.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBmb2xpdmh6Z2tlcWlqYWd6ZWpxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzOTE5NDgsImV4cCI6MjEwNjk2Nzk0OH0.JkQrIVXT3sWBGmmk49wXYMiJnw9eTzLFv_SR8Ip3IXc';
 // ================================================================
 
+const APP_V = 3;   // suurenda koos supabase.sql-i 'v'-ga, kui äpp ja andmebaas peavad koos uuenema
 const GAMES = { 1: '21 (otško)', 2: 'Pokker ilma vahetuseta', 3: 'Pokker ühe vahetusega', 4: 'Männik', 5: 'Pokker kahe vahetusega' };
 const LABELS = ['Kõrge kaart', 'Paar', 'Kaks paari', 'Kolmik', 'Rida', 'Mast', 'Maja', 'Nelik', 'Mastirida'];
 const RULES = {
@@ -138,7 +139,7 @@ const RULES = {
   2: '5 kaarti, vahetusi pole. Võiduks on vaja vähemalt paari.',
   3: '5 kaarti ja üks vahetus. Võiduks on vaja vähemalt paari.',
   4: '5 kaarti ja kaks vahetust. Loevad ainult numbrid 2–10, pildid ja äss on 0.',
-  5: '8 kaarti, kätte jääb kuni 5, siis kaks vahetust. Võiduks on vaja vähemalt paari.'
+  5: '8 kaarti ja kaks vahetust. Esimesel vahetusel viskad vähemalt 3 ära, nii et kätte jääb 5. Võiduks on vaja vähemalt paari.'
 };
 const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
 const ORDER = '23456789TJQKA';
@@ -195,8 +196,24 @@ async function refresh() {
     if (/ei ole selles toas/.test(e.message)) { leave(); toast('Seda tuba enam ei ole'); }
     return;                                   // võrguviga: proovime järgmisel korral uuesti
   }
+  if (d.v > APP_V) selfUpdate(true);
   const j = JSON.stringify(d);
   if (j !== lastJson) { lastJson = j; S = d; render(); }
+}
+// Kui GitHubis on uuem index.html (brauser näitab vahemälust vana), laeb lehe ise uuesti.
+let updTried = false;
+async function selfUpdate(must) {
+  if (updTried || typeof fetch !== 'function') return;
+  updTried = true;
+  try {
+    const t = await (await fetch(location.pathname + '?fresh=' + Date.now(), { cache: 'no-store' })).text();
+    const m = t.match(/const APP_V = (\d+)/);
+    if (m && +m[1] > APP_V) {
+      const q = new URLSearchParams(location.search); q.set('v', m[1]);
+      location.replace(location.pathname + '?' + q); return;
+    }
+  } catch (e) {}
+  if (must) toast('Äpist on uuem versioon. Lae leht uuesti.');
 }
 function enter(id) {
   roomId = id; save('km_room', id); S = null; lastJson = '';
@@ -337,12 +354,12 @@ function render() {
       const n = sel.size, must = Math.max(0, S.hand.length - 5);
       let btn;
       if (!myTurn) btn = `<p class="msg">${kind === 'k' ? 'Valib' : 'Vahetab'} <strong>${esc(turnP.name)}</strong>…</p>`;
-      else if (kind === 'k') btn = `<button class="mt" data-act="swap"${n < must ? ' disabled' : ''}>${n < must ? `Märgi veel ${must - n}` : `Viska ära ${n} kaarti`}</button>`;
+      else if (n < must) btn = `<button class="mt" data-act="swap" disabled>Märgi veel ${must - n}</button>`;
       else btn = `<button class="mt" data-act="swap">${n ? `Vaheta ${n} ${n === 1 ? 'kaart' : 'kaarti'}` : 'Ei vaheta'}</button>`;
       h += `<div class="panel mine">
         <div class="lbl"><h2 style="margin:0">Sinu kaardid</h2><strong>${label(S.hand_rank, G)}</strong></div>
         <div class="cards${S.hand.length + S.blind_n > 5 ? ' many' : ''}">${sortHand(S.hand).map(c => acted ? cardHtml(c) : cardBtn(c, 'pick', sel.has(c) ? ' sel' : '')).join('')}${BACK.repeat(S.blind_n)}</div>
-        ${acted ? '' : `<p class="hint">${kind === 'k' ? 'Märgi kaardid, mille ära viskad. Kätte jääb kuni 5.' : 'Märgi kaardid, mida tahad vahetada.'}</p>`}
+        ${acted ? '' : `<p class="hint">${must ? `Märgi vähemalt ${must} kaarti, mille ära viskad. Pakist saad nii palju, et kätte jääb 5.` : 'Märgi kaardid, mida tahad vahetada.'}</p>`}
         ${lastSwap && !acted ? `<label class="chk"><input type="checkbox" data-act="blindchk"${blindSel ? ' checked' : ''}><span>Uued kaardid pimesi: näen neid alles siis, kui need lauale avan</span></label>` : ''}
         ${btn}
       </div>`;
@@ -445,6 +462,7 @@ async function init() {
       <p class="dim">${esc(e.message || '')}</p></div>`;
     return;
   }
+  selfUpdate(false);
   const saved = load('km_room');
   if (saved) { await enter(saved); if (!S && roomId) renderHome(); }
   else renderHome();
