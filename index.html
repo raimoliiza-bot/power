@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="et">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d3b2c">
+<title>Kaardimäng</title>
+<style>
+  :root {
+    --felt: #0d3b2c; --felt-2: #124a38; --felt-3: #0a2e22;
+    --line: rgba(255,255,255,.12); --ink: #f3efe2; --dim: #a9c0b4;
+    --gold: #e9b949; --gold-ink: #2b2005; --card: #fbf8ef; --red: #c0302b; --black: #1c1c1c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: radial-gradient(120% 80% at 50% 0%, var(--felt-2), var(--felt) 55%, var(--felt-3));
+    background-attachment: fixed; color: var(--ink);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  main { max-width: 520px; margin: 0 auto; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); }
+  h1 { font: 700 30px/1.1 Georgia, "Times New Roman", serif; margin: 24px 0 4px; letter-spacing: .01em; }
+  h2 { font: 700 13px/1 system-ui, sans-serif; text-transform: uppercase; letter-spacing: .12em; color: var(--dim); margin: 0 0 10px; }
+  p { margin: 0 0 12px; }
+  .dim { color: var(--dim); }
+  .panel { background: rgba(0,0,0,.22); border: 1px solid var(--line); border-radius: 16px; padding: 16px; margin-top: 14px; }
+  label { display: block; font-size: 13px; color: var(--dim); margin-bottom: 6px; }
+  input {
+    width: 100%; padding: 13px 14px; border-radius: 12px; border: 1px solid var(--line);
+    background: rgba(255,255,255,.08); color: var(--ink); font: inherit; font-size: 17px; outline: none;
+  }
+  input:focus { border-color: var(--gold); }
+  input.code { text-transform: uppercase; letter-spacing: .3em; text-align: center; font-weight: 700; }
+  .row { display: flex; gap: 10px; align-items: flex-end; }
+  .row > * { flex: 1; }
+  .row > .narrow { flex: 0 0 96px; }
+  button {
+    width: 100%; padding: 15px 16px; border: 0; border-radius: 14px; cursor: pointer;
+    background: var(--gold); color: var(--gold-ink); font: 700 17px/1 system-ui, sans-serif;
+    box-shadow: 0 3px 0 rgba(0,0,0,.35);
+  }
+  button:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,.35); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); box-shadow: none; font-weight: 600; }
+  button.link { background: none; box-shadow: none; color: var(--dim); font: 500 14px/1 system-ui; padding: 10px; width: auto; text-decoration: underline; }
+  .mt { margin-top: 12px; }
+
+  /* päis */
+  .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; color: var(--dim); }
+  .top b { color: var(--ink); letter-spacing: .14em; }
+  .game { font: 700 22px/1.15 Georgia, serif; margin: 10px 0 2px; }
+
+  /* tabel */
+  .seats { list-style: none; margin: 14px 0 0; padding: 0; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: rgba(0,0,0,.22); }
+  .seats li { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line); }
+  .seats li:first-child { border-top: 0; }
+  .seats li.out { opacity: .45; }
+  .seats .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .seats .me { color: var(--gold); }
+  .badge { font: 700 11px/1 system-ui; padding: 4px 7px; border-radius: 99px; background: var(--card); color: var(--black); }
+  .st { font-size: 12px; color: var(--dim); white-space: nowrap; }
+  .wins { font: 700 20px/1 Georgia, serif; min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+  .wins small { font: 500 12px/1 system-ui; color: var(--dim); }
+
+  /* kaardid */
+  .cards { display: flex; gap: 6px; }
+  .card {
+    flex: 1; aspect-ratio: 5 / 7; max-width: 84px; background: var(--card); color: var(--black); border-radius: 9px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    box-shadow: 0 2px 0 rgba(0,0,0,.35), 0 6px 14px rgba(0,0,0,.25);
+  }
+  .card b { font: 700 24px/1 Georgia, serif; }
+  .card i { font-style: normal; font-size: 22px; line-height: 1; }
+  .card.red { color: var(--red); }
+  .cards.sm { gap: 4px; }
+  .cards.sm .card { max-width: 42px; border-radius: 6px; box-shadow: 0 1px 0 rgba(0,0,0,.35); gap: 0; }
+  .cards.sm .card b { font-size: 15px; } .cards.sm .card i { font-size: 13px; }
+  .back { background: repeating-linear-gradient(45deg, #8a2a2a 0 6px, #7a2222 6px 12px); border: 3px solid var(--card); }
+
+  .mine { margin-top: 16px; }
+  .mine .lbl { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+  .mine .lbl strong { font: 700 18px/1 Georgia, serif; color: var(--gold); }
+  .msg { text-align: center; padding: 18px 8px 6px; font-size: 17px; }
+  .msg strong { color: var(--gold); }
+
+  /* tulemus */
+  .res h3 { font: 700 20px/1.2 Georgia, serif; margin: 0 0 12px; }
+  .res .h { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .res .h:first-of-type { border-top: 0; }
+  .res .h .who { flex: 1; min-width: 0; }
+  .res .h .who div { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .res .h .who span { font-size: 12px; color: var(--dim); }
+  .res .h.win .who div { color: var(--gold); }
+  .res .h .cards { flex: 0 0 190px; }
+
+  .codebox { text-align: center; }
+  .codebox .big { font: 700 54px/1 Georgia, serif; letter-spacing: .18em; margin: 6px 0 12px; padding-left: .18em; }
+  #toast {
+    position: fixed; left: 16px; right: 16px; bottom: calc(20px + env(safe-area-inset-bottom)); margin: 0 auto; max-width: 488px;
+    background: #2a1414; border: 1px solid #7a3a3a; color: #ffdede; padding: 12px 14px; border-radius: 12px;
+    opacity: 0; pointer-events: none; transition: opacity .2s; text-align: center;
+  }
+  #toast.on { opacity: 1; }
+</style>
+</head>
+<body>
+<main id="app"><p class="dim" style="margin-top:40px;text-align:center">Laadin…</p></main>
+<div id="toast" role="status"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ====== SEADISTUS: pane siia oma Supabase'i projekti andmed ======
+// Supabase -> Project Settings -> API: "Project URL" ja "anon public" võti.
+const SUPABASE_URL = 'https://pfolivhzgkeqijagzejq.supabase.co';
+const SUPABASE_ANON_KEY = 'SINU-ANON-VOTI';
+// ================================================================
+
+const GAMES = { 1: '21 (otško)', 2: 'Pokker ilma vahetuseta', 3: 'Pokker ühe vahetusega', 4: 'Männik', 5: 'Pokker kahe vahetusega' };
+const LABELS = ['Kõrge kaart', 'Paar', 'Kaks paari', 'Kolmik', 'Rida', 'Mast', 'Maja', 'Nelik', 'Mastirida'];
+const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
+const ORDER = '23456789TJQKA';
+const $app = document.getElementById('app');
+
+let sb = null, roomId = null, S = null, lastJson = '', channel = null, timer = null, busy = false, toastT = null;
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function save(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
+function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function toast(m) {
+  const t = document.getElementById('toast'); t.textContent = m; t.classList.add('on');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 3500);
+}
+function cardHtml(c) {
+  const r = c[0] === 'T' ? '10' : c[0], s = c[1];
+  return `<span class="card${s === 'H' || s === 'D' ? ' red' : ''}"><b>${r}</b><i>${SUIT[s]}</i></span>`;
+}
+function cardsHtml(cs, small) {
+  const sorted = [...cs].sort((a, b) => ORDER.indexOf(b[0]) - ORDER.indexOf(a[0]));
+  return `<div class="cards${small ? ' sm' : ''}">${sorted.map(cardHtml).join('')}</div>`;
+}
+const label = rank => rank ? LABELS[rank[0]] : '';
+function names(list) {
+  const n = list.map(esc);
+  return n.length < 2 ? n.join('') : n.slice(0, -1).join(', ') + ' ja ' + n[n.length - 1];
+}
+
+// ---------- server ----------
+async function rpc(fn, args) {
+  const { data, error } = await sb.rpc(fn, args);
+  if (error) throw new Error(error.message || 'Midagi läks valesti');
+  return data;
+}
+async function act(fn, args) {
+  if (busy) return;
+  busy = true;
+  try { await rpc(fn, args); await refresh(); }
+  catch (e) { toast(e.message); }
+  finally { busy = false; }
+}
+async function refresh() {
+  if (!roomId) return;
+  let d;
+  try { d = await rpc('km_state', { p_room: roomId }); }
+  catch (e) {
+    if (/ei ole selles toas/.test(e.message)) { leave(); toast('Seda tuba enam ei ole'); }
+    return;                                   // võrguviga: proovime järgmisel korral uuesti
+  }
+  const j = JSON.stringify(d);
+  if (j !== lastJson) { lastJson = j; S = d; render(); }
+}
+function enter(id) {
+  roomId = id; save('km_room', id); S = null; lastJson = '';
+  if (channel) sb.removeChannel(channel);
+  channel = sb.channel('km-' + id)
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'km_rooms', filter: 'id=eq.' + id }, () => refresh())
+    .subscribe();
+  clearInterval(timer);
+  timer = setInterval(() => { if (!document.hidden) refresh(); }, 4000);   // varuvariant, kui Realtime ei tööta
+  return refresh();
+}
+function leave() {
+  if (channel) { sb.removeChannel(channel); channel = null; }
+  clearInterval(timer); roomId = null; S = null; lastJson = ''; save('km_room', null);
+  renderHome();
+}
+
+// ---------- vaated ----------
+function renderHome() {
+  const code = (new URLSearchParams(location.search).get('tuba') || '').toUpperCase().slice(0, 4);
+  $app.innerHTML = `
+    <h1>Kaardimäng</h1>
+    <p class="dim">3–6 mängijat, igaühel oma telefon.</p>
+    <div class="panel">
+      <label for="name">Sinu nimi</label>
+      <input id="name" maxlength="16" autocomplete="off" value="${esc(load('km_name') || '')}">
+    </div>
+    <div class="panel">
+      <h2>Liitu toaga</h2>
+      <div class="row">
+        <div><label for="code">Toa kood</label><input id="code" class="code" maxlength="4" autocomplete="off" autocapitalize="characters" value="${esc(code)}"></div>
+        <div><button data-act="join">Liitu</button></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Uus tuba</h2>
+      <div class="row">
+        <div class="narrow"><label for="target">Mitme võiduni</label><input id="target" type="number" inputmode="numeric" min="1" max="50" value="5"></div>
+        <div><button class="ghost" data-act="create">Loo tuba</button></div>
+      </div>
+    </div>`;
+}
+
+function render() {
+  if (!S) return renderHome();
+  const R = S.room, P = S.players, me = P.find(p => p.id === S.me);
+  const host = P.find(p => p.id === R.host), dealer = P.find(p => p.seat === R.dealer_seat);
+  const amHost = R.host === S.me, amDealer = dealer && dealer.id === S.me;
+
+  if (R.phase === 'lobby') {
+    $app.innerHTML = `
+      <div class="top"><span>Mängitakse ${R.target} võiduni</span><button class="link" data-act="leave">Välju</button></div>
+      <div class="panel codebox">
+        <h2>Toa kood</h2>
+        <div class="big">${esc(R.code)}</div>
+        <button class="ghost" data-act="share">Kopeeri kutse link</button>
+      </div>
+      <ul class="seats">${P.map(p => `<li><span class="nm${p.id === S.me ? ' me' : ''}">${esc(p.name)}</span>${p.id === R.host ? '<span class="st">toa looja</span>' : ''}</li>`).join('')}</ul>
+      <p class="dim mt" style="text-align:center">${P.length} mängijat toas (kuni 6)</p>
+      ${amHost
+        ? `<button data-act="start"${P.length < 2 ? ' disabled' : ''}>Alusta mängu</button>`
+        : `<p class="msg">Ootame, kuni <strong>${esc(host.name)}</strong> mängu alustab…</p>`}`;
+    return;
+  }
+
+  // ----- laud -----
+  const res = R.result;
+  let h = `
+    <div class="top"><span>Tuba <b>${esc(R.code)}</b> · ring ${R.round_no}${R.tiebreak ? ' · lisaring' : ''}</span><span>${R.target} võiduni</span></div>
+    <div class="game">${GAMES[R.game]}</div>
+    <ul class="seats">${P.map(p => {
+      let st = '';
+      if (R.phase === 'play') st = !p.active ? 'vaatab pealt' : p.opened ? 'avas' : 'vaatab kaarte';
+      return `<li class="${R.phase === 'play' && !p.active ? 'out' : ''}">
+        <span class="nm${p.id === S.me ? ' me' : ''}">${esc(p.name)}</span>
+        ${p.seat === R.dealer_seat && R.phase !== 'finished' ? '<span class="badge" title="Diiler">D</span>' : ''}
+        <span class="st">${st}</span>
+        <span class="wins">${p.wins}<small>/${R.target}</small></span></li>`;
+    }).join('')}</ul>`;
+
+  if (res) {
+    const win = res.hands.filter(x => res.winners.includes(x.id)).map(x => x.name);
+    let title;
+    if (res.kind === 'win') title = R.phase === 'finished' ? `${names(win)} võitis mängu!` : `${names(win)} võitis ringi`;
+    else if (res.kind === 'tie') title = `Viik: ${names(win)} – lisaring`;
+    else title = res.was_tiebreak ? 'Kellelgi polnud paari – lisaring jagatakse uuesti' : 'Kellelgi polnud paari – punkti ei saanud keegi';
+    h += `<div class="panel res"><h3>${title}</h3>${res.hands.map(x => `
+      <div class="h${res.winners.includes(x.id) ? ' win' : ''}">
+        <div class="who"><div>${esc(x.name)}</div><span>${label(x.rank)}</span></div>
+        ${cardsHtml(x.cards, true)}
+      </div>`).join('')}</div>`;
+  }
+
+  if (R.phase === 'deal') {
+    h += amDealer
+      ? `<button class="mt" data-act="deal">${R.tiebreak ? 'Jaga lisaring' : 'Jaga kaardid'}</button>`
+      : `<p class="msg">Jagab <strong>${esc(dealer.name)}</strong>…</p>`;
+  } else if (R.phase === 'play') {
+    if (S.hand) {
+      h += `<div class="panel mine">
+        <div class="lbl"><h2 style="margin:0">Sinu kaardid</h2><strong>${label(S.hand_rank)}</strong></div>
+        ${cardsHtml(S.hand)}
+        ${me.opened ? '<p class="msg">Ootame teisi…</p>' : '<button class="mt" data-act="open">Ava kaardid</button>'}
+      </div>`;
+    } else {
+      h += `<p class="msg">Lisaring käib. Sina vaatad pealt.</p>`;
+    }
+    if (amHost) h += `<p style="text-align:center;margin-top:8px"><button class="link" data-act="openall">Keegi on kadunud? Ava kõigi kaardid</button></p>`;
+  } else if (R.phase === 'finished') {
+    h += amHost ? `<button class="mt" data-act="again">Uus mäng</button>` : `<p class="msg">Mäng läbi. Uue mängu saab alustada <strong>${esc(host.name)}</strong>.</p>`;
+  }
+  h += `<p style="text-align:center;margin-top:18px"><button class="link" data-act="leave">Välju toast</button></p>`;
+  $app.innerHTML = h;
+}
+
+// ---------- nupud ----------
+function readName() {
+  const n = document.getElementById('name').value.trim();
+  if (!n) { toast('Kirjuta kõigepealt oma nimi'); return null; }
+  save('km_name', n); return n;
+}
+$app.addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-act]'); if (!b || busy) return;
+  const a = b.dataset.act;
+  try {
+    if (a === 'create') {
+      const n = readName(); if (!n) return;
+      busy = true;
+      const r = await rpc('km_create_room', { p_name: n, p_target: parseInt(document.getElementById('target').value, 10) || 5 });
+      busy = false; await enter(r.room_id);
+    } else if (a === 'join') {
+      const n = readName(); if (!n) return;
+      const c = document.getElementById('code').value.trim();
+      if (c.length !== 4) return toast('Toa kood on 4 tähte');
+      busy = true;
+      const id = await rpc('km_join_room', { p_code: c, p_name: n });
+      busy = false; await enter(id);
+    } else if (a === 'start') await act('km_start', { p_room: roomId });
+    else if (a === 'deal') await act('km_deal', { p_room: roomId });
+    else if (a === 'open') await act('km_open', { p_room: roomId, p_all: false });
+    else if (a === 'openall') await act('km_open', { p_room: roomId, p_all: true });
+    else if (a === 'again') await act('km_new_game', { p_room: roomId });
+    else if (a === 'leave') leave();
+    else if (a === 'share') {
+      const url = location.origin + location.pathname + '?tuba=' + S.room.code;
+      try { await navigator.clipboard.writeText(url); toast('Link kopeeritud'); }
+      catch (e) { toast(url); }
+    }
+  } catch (e) { busy = false; toast(e.message); }
+});
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+
+// ---------- käivitus ----------
+async function init() {
+  if (!window.supabase || SUPABASE_ANON_KEY.includes('SINU-ANON')) {
+    $app.innerHTML = `<h1>Kaardimäng</h1><div class="panel"><p>Supabase on seadistamata.</p>
+      <p class="dim">Ava index.html ja pane faili alguses olevatesse ridadesse SUPABASE_URL ja SUPABASE_ANON_KEY oma projekti andmed.</p></div>`;
+    return;
+  }
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  try {
+    const { data } = await sb.auth.getSession();
+    if (!data.session) {
+      const { error } = await sb.auth.signInAnonymously();
+      if (error) throw error;
+    }
+  } catch (e) {
+    $app.innerHTML = `<h1>Kaardimäng</h1><div class="panel"><p>Sisselogimine ei õnnestunud.</p>
+      <p class="dim">Kontrolli, et Supabase'is oleks lubatud anonüümne sisselogimine (Authentication → Sign In / Providers → Allow anonymous sign-ins).</p>
+      <p class="dim">${esc(e.message || '')}</p></div>`;
+    return;
+  }
+  const saved = load('km_room');
+  if (saved) { await enter(saved); if (!S && roomId) renderHome(); }
+  else renderHome();
+}
+init();
+</script>
+</body>
+</html>
