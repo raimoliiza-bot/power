@@ -86,6 +86,10 @@
   .seats li.turn .st { color: var(--gold); font-weight: 600; }
   .rule { color: var(--dim); font-size: 14px; margin: 0; }
   .rule b { color: var(--gold); }
+  .card.off { opacity: .35; }
+  .chk { display: flex; align-items: center; gap: 10px; margin: 14px 0 0; font-size: 15px; color: var(--ink); cursor: pointer; }
+  .chk input { width: 22px; height: 22px; padding: 0; flex: 0 0 22px; accent-color: var(--gold); }
+  .hint { color: var(--dim); text-align: center; margin: 14px 0 0; font-size: 15px; }
   .back { background: repeating-linear-gradient(45deg, #8a2a2a 0 6px, #7a2222 6px 12px); border: 3px solid var(--card); }
 
   .mine { margin-top: 16px; }
@@ -106,6 +110,7 @@
 
   .codebox { text-align: center; }
   .codebox .big { font: 700 54px/1 Georgia, serif; letter-spacing: .18em; margin: 6px 0 12px; padding-left: .18em; }
+  button.card.back { border: 3px solid var(--card); }
   #toast {
     position: fixed; left: 16px; right: 16px; bottom: calc(20px + env(safe-area-inset-bottom)); margin: 0 auto; max-width: 488px;
     background: #2a1414; border: 1px solid #7a3a3a; color: #ffdede; padding: 12px 14px; border-radius: 12px;
@@ -129,16 +134,17 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const GAMES = { 1: '21 (otško)', 2: 'Pokker ilma vahetuseta', 3: 'Pokker ühe vahetusega', 4: 'Männik', 5: 'Pokker kahe vahetusega' };
 const LABELS = ['Kõrge kaart', 'Paar', 'Kaks paari', 'Kolmik', 'Rida', 'Mast', 'Maja', 'Nelik', 'Mastirida'];
 const RULES = {
+  1: '2 kaarti, juurde võtad nii palju kui tahad. 16–21 punktiga võid võtta ühe pimeda kaardi. J = 2, Q = 3, K = 4, äss 1 või 11.',
   2: '5 kaarti, vahetusi pole. Võiduks on vaja vähemalt paari.',
-  3: '5 kaarti ja üks vahetus.',
+  3: '5 kaarti ja üks vahetus. Võiduks on vaja vähemalt paari.',
   4: '5 kaarti ja kaks vahetust. Loevad ainult numbrid 2–10, pildid ja äss on 0.',
-  5: '8 kaarti, kätte jääb kuni 5, siis kaks vahetust.'
+  5: '8 kaarti, kätte jääb kuni 5, siis kaks vahetust. Võiduks on vaja vähemalt paari.'
 };
 const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
 const ORDER = '23456789TJQKA';
 const $app = document.getElementById('app');
 
-let sb = null, roomId = null, S = null, lastJson = '', channel = null, timer = null, busy = false, toastT = null, sel = new Set(), selKey = '';
+let sb = null, roomId = null, S = null, lastJson = '', channel = null, timer = null, busy = false, toastT = null, sel = new Set(), selKey = '', blindSel = false;
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 function save(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }
@@ -155,7 +161,10 @@ function cardsHtml(cs, small) {
   const sorted = [...cs].sort((a, b) => ORDER.indexOf(b[0]) - ORDER.indexOf(a[0]));
   return `<div class="cards${small ? ' sm' : ''}">${sorted.map(cardHtml).join('')}</div>`;
 }
-const label = (rank, game) => !rank ? '' : game === 4 ? rank[0] + ' punkti' : LABELS[rank[0]];
+const label = (rank, game) => !rank ? ''
+  : game === 1 ? (rank[0] === 0 && rank[1] > 21 ? rank[1] + ' – lõhki' : rank[1] + ' punkti')
+  : game === 4 ? rank[0] + ' punkti' : LABELS[rank[0]];
+const BACK = '<span class="card back"></span>';
 const sortHand = cs => [...cs].sort((a, b) => ORDER.indexOf(b[0]) - ORDER.indexOf(a[0]));
 function cardBtn(c, act, cls) {
   return cardHtml(c).replace('<span class="card', `<button data-act="${act}" data-card="${c}" class="card${cls || ''}`).replace('</span>', '</button>');
@@ -254,24 +263,29 @@ function render() {
   }
 
   // ----- laud -----
-  const res = R.result;
+  const res = R.result, G = R.game;
   const kind = R.steps[R.step - 1], nKeep = R.steps.filter(k => k === 'k').length;
+  const lastSwap = kind === 'x' && R.step === R.steps.length;
   const live = R.phase === 'play' || R.phase === 'draw';
   let stepTxt = '';
-  if (R.phase === 'draw') stepTxt = kind === 'k' ? 'Kätte jätmine.' : `Vahetus ${R.step - nKeep}/${R.steps.length - nKeep}.`;
+  if (R.phase === 'draw') stepTxt = kind === 'h' ? 'Kaartide võtmine.' : kind === 'k' ? 'Kätte jätmine.' : `Vahetus ${R.step - nKeep}/${R.steps.length - nKeep}.`;
   else if (R.phase === 'play') stepTxt = 'Kaartide avamine.';
-  const swapTxt = p => { const x = p.swaps.slice(nKeep); return x.length ? 'vahetas ' + x.join(', ') : ''; };
+  const swapTxt = p => {
+    if (G === 1) return p.pass ? 'jättis pimeda kinni' : p.blind ? 'pime kaart avamata' : '';
+    const x = p.swaps.slice(nKeep);
+    return x.length ? 'vahetas ' + x.join(', ') + (p.blind ? ' · pimesi' : '') : '';
+  };
   let h = `
     <div class="top"><span>Tuba <b>${esc(R.code)}</b> · ring ${R.round_no}${R.tiebreak ? ' · lisaring' : ''}</span><span>${R.target} võiduni</span></div>
-    <div class="game">${GAMES[R.game]}</div>
-    <p class="rule">${RULES[R.game] || ''}${stepTxt ? ` <b>${stepTxt}</b>` : ''}</p>
+    <div class="game">${GAMES[G]}</div>
+    <p class="rule">${RULES[G] || ''}${stepTxt ? ` <b>${stepTxt}</b>` : ''}</p>
     <ul class="seats">${P.map(p => {
       let st = '';
       if (live && !p.active) st = 'vaatab pealt';
-      else if (R.phase === 'play') st = p.opened ? 'kõik avatud' : p.shown.length + '/5 avatud';
+      else if (R.phase === 'play') st = p.opened ? 'valmis' : `${p.shown.length}/${p.n} avatud`;
       else if (R.phase === 'draw') {
-        if (p.seat === R.turn_seat) st = kind === 'k' ? 'valib…' : 'vahetab…';
-        else if (p.swaps.length >= R.step) st = kind === 'k' ? 'valis' : 'vahetas ' + p.swaps[R.step - 1];
+        if (p.seat === R.turn_seat) st = kind === 'h' ? 'võtab…' : kind === 'k' ? 'valib…' : 'vahetab…';
+        else if (p.swaps.length >= R.step) st = kind === 'h' ? `${p.n} kaarti${p.blind ? ', üks pime' : ''}` : kind === 'k' ? 'valis' : 'vahetas ' + p.swaps[R.step - 1] + (p.blind ? ' pimesi' : '');
         else st = 'ootab';
       }
       return `<li class="${live && !p.active ? 'out' : ''}${R.phase === 'draw' && p.seat === R.turn_seat ? ' turn' : ''}">
@@ -286,12 +300,14 @@ function render() {
     let title;
     if (res.kind === 'win') title = R.phase === 'finished' ? `${names(win)} võitis mängu!` : `${names(win)} võitis ringi`;
     else if (res.kind === 'tie') title = `Viik: ${names(win)} – lisaring`;
-    else title = res.was_tiebreak ? 'Kellelgi polnud paari – lisaring jagatakse uuesti' : 'Kellelgi polnud paari – punkti ei saanud keegi';
-    h += `<div class="panel res"><h2>Ring ${res.round_no} · ${GAMES[res.game]}</h2><h3>${title}</h3>${res.hands.map(x => `
+    else title = `${res.game === 1 ? 'Kõik läksid lõhki' : 'Kellelgi polnud paari'} – ${res.was_tiebreak ? 'lisaring jagatakse uuesti' : 'punkti ei saanud keegi'}`;
+    h += `<div class="panel res"><h2>Ring ${res.round_no} · ${GAMES[res.game]}</h2><h3>${title}</h3>${res.hands.map(x => {
+      const extra = x.extra || [];
+      return `
       <div class="h${res.winners.includes(x.id) ? ' win' : ''}">
-        <div class="who"><div>${esc(x.name)}</div><span>${label(x.rank, res.game)}</span></div>
-        ${cardsHtml(x.cards, true)}
-      </div>`).join('')}</div>`;
+        <div class="who"><div>${esc(x.name)}</div><span>${label(x.rank, res.game)}${extra.length ? ' · pime jäi kinni' : ''}</span></div>
+        <div class="cards sm">${(res.game === 1 ? x.cards : sortHand(x.cards)).map(cardHtml).join('')}${extra.map(c => cardHtml(c).replace('class="card', 'class="card off')).join('')}</div>
+      </div>`; }).join('')}</div>`;
   }
 
   if (R.phase === 'deal') {
@@ -300,18 +316,34 @@ function render() {
       : `<p class="msg">Jagab <strong>${esc(dealer.name)}</strong>…</p>`;
   } else if (R.phase === 'draw') {
     const turnP = P.find(p => p.seat === R.turn_seat), myTurn = !!turnP && turnP.id === S.me;
-    if (S.hand) {
+    const acted = me.swaps.length >= R.step;
+    if (S.hand && kind === 'h') {
+      // ----- 21: kaartide võtmine -----
+      const t = S.hand_rank ? S.hand_rank[1] : 0, canBlind = t >= 16 && t <= 21;
+      let btn;
+      if (!myTurn) btn = `<p class="msg">${t > 21 ? 'Läksid lõhki. ' : ''}Võtab <strong>${esc(turnP.name)}</strong>…</p>`;
+      else btn = `<div class="row mt"><button data-act="hit">Võta kaart</button><button class="ghost" data-act="stand">Jään</button></div>
+        <button class="ghost mt" data-act="blind"${canBlind ? '' : ' disabled'}>Võta pime kaart</button>
+        <p class="hint">Pimeda kaardi saab võtta 16–21 punktiga ja see lõpetab su käigu. Sa ei näe seda ise ka.</p>`;
+      h += `<div class="panel mine">
+        <div class="lbl"><h2 style="margin:0">Sinu kaardid</h2><strong>${label(S.hand_rank, G)}</strong></div>
+        <div class="cards${S.hand.length + S.blind_n > 5 ? ' many' : ''}">${S.hand.map(cardHtml).join('')}${BACK.repeat(S.blind_n)}</div>
+        ${btn}
+      </div>`;
+    } else if (S.hand) {
+      // ----- vahetus -----
       const key = [R.round_no, R.step, R.tiebreak, S.hand.join('')].join(':');
-      if (selKey !== key) { selKey = key; sel = new Set(); }
+      if (selKey !== key) { selKey = key; sel = new Set(); blindSel = false; }
       const n = sel.size, must = Math.max(0, S.hand.length - 5);
       let btn;
       if (!myTurn) btn = `<p class="msg">${kind === 'k' ? 'Valib' : 'Vahetab'} <strong>${esc(turnP.name)}</strong>…</p>`;
       else if (kind === 'k') btn = `<button class="mt" data-act="swap"${n < must ? ' disabled' : ''}>${n < must ? `Märgi veel ${must - n}` : `Viska ära ${n} kaarti`}</button>`;
       else btn = `<button class="mt" data-act="swap">${n ? `Vaheta ${n} ${n === 1 ? 'kaart' : 'kaarti'}` : 'Ei vaheta'}</button>`;
       h += `<div class="panel mine">
-        <div class="lbl"><h2 style="margin:0">Sinu kaardid</h2><strong>${label(S.hand_rank, R.game)}</strong></div>
-        <div class="cards${S.hand.length > 5 ? ' many' : ''}">${sortHand(S.hand).map(c => cardBtn(c, 'pick', sel.has(c) ? ' sel' : '')).join('')}</div>
-        <p class="dim" style="text-align:center;margin:14px 0 0">${kind === 'k' ? 'Märgi kaardid, mille ära viskad. Kätte jääb kuni 5.' : 'Märgi kaardid, mida tahad vahetada.'}</p>
+        <div class="lbl"><h2 style="margin:0">Sinu kaardid</h2><strong>${label(S.hand_rank, G)}</strong></div>
+        <div class="cards${S.hand.length + S.blind_n > 5 ? ' many' : ''}">${sortHand(S.hand).map(c => acted ? cardHtml(c) : cardBtn(c, 'pick', sel.has(c) ? ' sel' : '')).join('')}${BACK.repeat(S.blind_n)}</div>
+        ${acted ? '' : `<p class="hint">${kind === 'k' ? 'Märgi kaardid, mille ära viskad. Kätte jääb kuni 5.' : 'Märgi kaardid, mida tahad vahetada.'}</p>`}
+        ${lastSwap && !acted ? `<label class="chk"><input type="checkbox" data-act="blindchk"${blindSel ? ' checked' : ''}><span>Uued kaardid pimesi: näen neid alles siis, kui need lauale avan</span></label>` : ''}
         ${btn}
       </div>`;
     } else {
@@ -322,15 +354,21 @@ function render() {
     h += `<div class="panel res"><h2>Laud</h2>${P.filter(p => p.active).map(p => `
       <div class="h">
         <div class="who"><div>${esc(p.name)}</div><span>${swapTxt(p)}</span></div>
-        <div class="cards sm">${p.shown.map(cardHtml).join('')}${'<span class="card back"></span>'.repeat(Math.max(0, 5 - p.shown.length))}</div>
+        <div class="cards sm">${p.shown.map(cardHtml).join('')}${BACK.repeat(Math.max(0, p.n - p.shown.length))}</div>
       </div>`).join('')}</div>`;
     if (S.hand) {
-      const sorted = [...S.hand].sort((a, b) => ORDER.indexOf(b[0]) - ORDER.indexOf(a[0]));
+      const vis = G === 1 ? S.hand : sortHand(S.hand);
+      const left = vis.some(c => !me.shown.includes(c)) || (G !== 1 && S.blind_n > 0);
+      const blindOpen = G === 1 && S.blind_n > 0 && !me.pass;
+      let foot;
+      if (me.opened) foot = '<p class="msg">Ootame teisi…</p>';
+      else foot = `<p class="hint">${blindOpen ? 'Pimeda kaardi avad ainult siis, kui tahad, et see arvesse läheks.' : S.blind_n ? 'Puuduta kaarti, et see lauale avada. Pimedat kaarti näed koos teistega.' : 'Puuduta kaarti, et see lauale avada.'}</p>
+        ${blindOpen ? '<button class="ghost mt" data-act="pass">Jätan pimeda kinni</button>' : ''}
+        ${left ? '<p style="text-align:center;margin:0"><button class="link" data-act="open">Ava kõik korraga</button></p>' : ''}`;
       h += `<div class="panel mine">
-        <div class="lbl"><h2 style="margin:0">Sinu kaardid</h2><strong>${label(S.hand_rank, R.game)}</strong></div>
-        <div class="cards">${sorted.map(c => cardHtml(c).replace('<span class="card', `<button data-act="reveal" data-card="${c}"${me.shown.includes(c) ? ' disabled' : ''} class="card`).replace('</span>', '</button>')).join('')}</div>
-        ${me.opened ? '<p class="msg">Ootame teisi…</p>'
-          : '<p class="dim" style="text-align:center;margin:14px 0 0">Puuduta kaarti, et see lauale avada.</p><p style="text-align:center;margin:0"><button class="link" data-act="open">Ava kõik korraga</button></p>'}
+        <div class="lbl"><h2 style="margin:0">Sinu kaardid</h2><strong>${label(S.hand_rank, G)}</strong></div>
+        <div class="cards${vis.length + S.blind_n > 5 ? ' many' : ''}">${vis.map(c => cardBtn(c, 'reveal', '').replace('<button ', me.shown.includes(c) ? '<button disabled ' : '<button ')).join('')}${me.pass ? BACK.repeat(S.blind_n) : '<button data-act="reveal" data-card="??" class="card back" aria-label="Ava pime kaart"></button>'.repeat(S.blind_n)}</div>
+        ${foot}
       </div>`;
     } else {
       h += `<p class="msg">Lisaring käib. Sina vaatad pealt.</p>`;
@@ -368,7 +406,10 @@ $app.addEventListener('click', async ev => {
     } else if (a === 'start') await act('km_start', { p_room: roomId });
     else if (a === 'deal') await act('km_deal', { p_room: roomId });
     else if (a === 'pick') { const c = b.dataset.card; sel.has(c) ? sel.delete(c) : sel.add(c); render(); }
-    else if (a === 'swap') await act('km_swap', { p_room: roomId, p_cards: [...sel] });
+    else if (a === 'blindchk') blindSel = b.checked;
+    else if (a === 'swap') await act('km_swap', { p_room: roomId, p_cards: [...sel], p_blind: blindSel });
+    else if (a === 'hit' || a === 'stand' || a === 'blind') await act('km_21', { p_room: roomId, p_move: a });
+    else if (a === 'pass') await act('km_pass', { p_room: roomId });
     else if (a === 'skip') await act('km_skip', { p_room: roomId });
     else if (a === 'reveal') await act('km_reveal', { p_room: roomId, p_card: b.dataset.card });
     else if (a === 'open') await act('km_open', { p_room: roomId, p_all: false });
