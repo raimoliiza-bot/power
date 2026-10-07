@@ -13,6 +13,7 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; min-height: 100%; }
+  html { background: #0a2e22; }
   body {
     background: radial-gradient(120% 80% at 50% 0%, var(--felt-2), var(--felt) 55%, var(--felt-3));
     background-attachment: fixed; color: var(--ink);
@@ -76,6 +77,8 @@
   .cards.sm { gap: 4px; }
   .cards.sm .card { max-width: 42px; border-radius: 6px; box-shadow: 0 1px 0 rgba(0,0,0,.35); gap: 0; }
   .cards.sm .card b { font-size: 15px; } .cards.sm .card i { font-size: 13px; }
+  button.card { padding: 0; width: auto; border: 0; cursor: pointer; }
+  button.card:disabled { opacity: .4; transform: translateY(-8px); box-shadow: none; }
   .back { background: repeating-linear-gradient(45deg, #8a2a2a 0 6px, #7a2222 6px 12px); border: 3px solid var(--card); }
 
   .mine { margin-top: 16px; }
@@ -190,7 +193,7 @@ function renderHome() {
   const code = (new URLSearchParams(location.search).get('tuba') || '').toUpperCase().slice(0, 4);
   $app.innerHTML = `
     <h1>Kaardimäng</h1>
-    <p class="dim">3–6 mängijat, igaühel oma telefon.</p>
+    <p class="dim">2–6 mängijat, igaühel oma telefon.</p>
     <div class="panel">
       <label for="name">Sinu nimi</label>
       <input id="name" maxlength="16" autocomplete="off" value="${esc(load('km_name') || '')}">
@@ -240,7 +243,7 @@ function render() {
     <div class="game">${GAMES[R.game]}</div>
     <ul class="seats">${P.map(p => {
       let st = '';
-      if (R.phase === 'play') st = !p.active ? 'vaatab pealt' : p.opened ? 'avas' : 'vaatab kaarte';
+      if (R.phase === 'play') st = !p.active ? 'vaatab pealt' : p.opened ? 'kõik avatud' : p.shown.length + '/5 avatud';
       return `<li class="${R.phase === 'play' && !p.active ? 'out' : ''}">
         <span class="nm${p.id === S.me ? ' me' : ''}">${esc(p.name)}</span>
         ${p.seat === R.dealer_seat && R.phase !== 'finished' ? '<span class="badge" title="Diiler">D</span>' : ''}
@@ -266,11 +269,18 @@ function render() {
       ? `<button class="mt" data-act="deal">${R.tiebreak ? 'Jaga lisaring' : 'Jaga kaardid'}</button>`
       : `<p class="msg">Jagab <strong>${esc(dealer.name)}</strong>…</p>`;
   } else if (R.phase === 'play') {
+    h += `<div class="panel res"><h2>Laud</h2>${P.filter(p => p.active).map(p => `
+      <div class="h">
+        <div class="who"><div>${esc(p.name)}</div></div>
+        <div class="cards sm">${p.shown.map(cardHtml).join('')}${'<span class="card back"></span>'.repeat(Math.max(0, 5 - p.shown.length))}</div>
+      </div>`).join('')}</div>`;
     if (S.hand) {
+      const sorted = [...S.hand].sort((a, b) => ORDER.indexOf(b[0]) - ORDER.indexOf(a[0]));
       h += `<div class="panel mine">
         <div class="lbl"><h2 style="margin:0">Sinu kaardid</h2><strong>${label(S.hand_rank)}</strong></div>
-        ${cardsHtml(S.hand)}
-        ${me.opened ? '<p class="msg">Ootame teisi…</p>' : '<button class="mt" data-act="open">Ava kaardid</button>'}
+        <div class="cards">${sorted.map(c => cardHtml(c).replace('<span class="card', `<button data-act="reveal" data-card="${c}"${me.shown.includes(c) ? ' disabled' : ''} class="card`).replace('</span>', '</button>')).join('')}</div>
+        ${me.opened ? '<p class="msg">Ootame teisi…</p>'
+          : '<p class="dim" style="text-align:center;margin:14px 0 0">Puuduta kaarti, et see lauale avada.</p><p style="text-align:center;margin:0"><button class="link" data-act="open">Ava kõik korraga</button></p>'}
       </div>`;
     } else {
       h += `<p class="msg">Lisaring käib. Sina vaatad pealt.</p>`;
@@ -307,6 +317,7 @@ $app.addEventListener('click', async ev => {
       busy = false; await enter(id);
     } else if (a === 'start') await act('km_start', { p_room: roomId });
     else if (a === 'deal') await act('km_deal', { p_room: roomId });
+    else if (a === 'reveal') await act('km_reveal', { p_room: roomId, p_card: b.dataset.card });
     else if (a === 'open') await act('km_open', { p_room: roomId, p_all: false });
     else if (a === 'openall') await act('km_open', { p_room: roomId, p_all: true });
     else if (a === 'again') await act('km_new_game', { p_room: roomId });
